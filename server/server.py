@@ -18,7 +18,7 @@ current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
-from common.models import Message, User, UserRole, FirewallStatus
+from common.models import Message, User, UserRole, FirewallStatus, IptablesRule
 from server.database import Database
 from server.logger import get_logger
 from server.iptables import IptablesManager
@@ -227,8 +227,10 @@ class FirewallServer:
         
         # Router la commande
         command = message.data.get("command")
-        
-        if command.startswith("users "):
+
+        if command == "rule":
+            return self.handle_rule_command(message, session)
+        elif command.startswith("users "):
             return self.handle_users_command(message, session)
         elif command.startswith("fw "):
             return self.handle_firewall_command(message, session)
@@ -532,7 +534,177 @@ class FirewallServer:
                 )
         
         return Message(type="error", data={"message": "Invalid firewall command"})
-    
+
+    def handle_rule_command(self, message: Message, session: Session) -> Message:
+        """
+        Gère les commandes de gestion des règles iptables
+
+        Args:
+            message: Message contenant les données de la règle
+            session: Session de l'utilisateur
+
+        Returns:
+            Message de réponse
+        """
+        user = session.user
+        data = message.data
+
+        # Extraire les paramètres
+        fw_name = data.get("firewall")
+        table_name = data.get("table", "filter")
+        action = data.get("action")  # "add", "delete", "insert"
+        rule_def = data.get("rule")
+
+        # Vérifications de base
+        if not fw_name:
+            return Message(type="error", data={"message": "Firewall name required"})
+
+        if not action:
+            return Message(type="error", data={"message": "Action required (add/delete/insert)"})
+
+        if not rule_def:
+            return Message(type="error", data={"message": "Rule definition required"})
+
+        # Vérifier les permissions
+        if not user.has_access(fw_name):
+            self.logger.error(user.username, f"Access denied to firewall {fw_name}")
+            return Message(type="error", data={"message": f"Access denied to firewall {fw_name}"})
+
+        # Charger le firewall
+        firewall = self.db.get_firewall(fw_name)
+        if not firewall:
+            return Message(type="error", data={"message": f"Firewall {fw_name} not found"})
+
+        # Vérifier que la table existe
+        if table_name not in firewall.tables:
+            return Message(type="error", data={"message": f"Table {table_name} not found in firewall"})
+
+        # Créer l'objet IptablesRule
+        try:
+            rule = IptablesRule.from_dict(rule_def)
+        except Exception as e:
+            return Message(type="error", data={"message": f"Invalid rule definition: {str(e)}"})
+
+        # Vérifier que la chaîne existe dans la table
+        chain_name = rule.chain
+        if chain_name not in firewall.tables[table_name]:
+            return Message(type="error", data={"message": f"Chain {chain_name} not found in table {table_name}"})
+
+        # Effectuer l'action
+        if action == "add" or action == "append":
+            # Ajouter la règle à la fin de la chaîne
+            firewall.tables[table_name][chain_name].append(rule)
+            self.logger.command(user.username, f"Added rule to {fw_name}/{table_name}/{chain_name}")
+
+            # Sauvegarder le firewall
+            firewall.updated_at = datetime.now().isoformat()
+            self.db.update_firewall(firewall)
+
+            # Si le firewall est actif, appliquer la règle immédiatement
+            if firewall.status == FirewallStatus.ACTIVE:
+                success, msg = self.iptables.apply_rule(rule, table_name, "A")
+                if not success:
+                    return Message(
+                        type="response",
+                        data={
+                            "success": True,
+                            "message": f"Rule added to configuration but failed to apply: {msg}",
+                            "warning": True
+                        }
+                    )
+
+            return Message(
+                type="response",
+                data={
+                    "success": True,
+                    "message": f"Rule added to {fw_name}/{table_name}/{chain_name}"
+                }
+            )
+
+        elif action == "insert":
+            # Insérer la règle au début de la chaîne
+            firewall.tables[table_name][chain_name].insert(0, rule)
+            self.logger.command(user.username, f"Inserted rule to {fw_name}/{table_name}/{chain_name}")
+
+            # Sauvegarder le firewall
+            firewall.updated_at = datetime.now().isoformat()
+            self.db.update_firewall(firewall)
+
+            # Si le firewall est actif, appliquer la règle immédiatement
+            if firewall.status == FirewallStatus.ACTIVE:
+                success, msg = self.iptables.apply_rule(rule, table_name, "I")
+                if not success:
+                    return Message(
+                        type="response",
+                        data={
+                            "success": True,
+                            "message": f"Rule inserted to configuration but failed to apply: {msg}",
+                            "warning": True
+                        }
+                    )
+
+            return Message(
+                type="response",
+                data={
+                    "success": True,
+                    "message": f"Rule inserted to {fw_name}/{table_name}/{chain_name}"
+                }
+            )
+
+        elif action == "delete":
+            # Supprimer la règle (on cherche une règle correspondante)
+            rules = firewall.tables[table_name][chain_name]
+
+            # Chercher une règle qui correspond
+            rule_found = False
+            for i, existing_rule in enumerate(rules):
+                if (existing_rule.chain == rule.chain and
+                    existing_rule.protocol == rule.protocol and
+                    existing_rule.source == rule.source and
+                    existing_rule.destination == rule.destination and
+                    existing_rule.sport == rule.sport and
+                    existing_rule.dport == rule.dport and
+                    existing_rule.state == rule.state and
+                    existing_rule.interface == rule.interface and
+                    existing_rule.target == rule.target):
+                    # Supprimer la règle
+                    rules.pop(i)
+                    rule_found = True
+                    break
+
+            if not rule_found:
+                return Message(type="error", data={"message": "Rule not found in firewall configuration"})
+
+            self.logger.command(user.username, f"Deleted rule from {fw_name}/{table_name}/{chain_name}")
+
+            # Sauvegarder le firewall
+            firewall.updated_at = datetime.now().isoformat()
+            self.db.update_firewall(firewall)
+
+            # Si le firewall est actif, supprimer la règle immédiatement
+            if firewall.status == FirewallStatus.ACTIVE:
+                success, msg = self.iptables.apply_rule(rule, table_name, "D")
+                if not success:
+                    return Message(
+                        type="response",
+                        data={
+                            "success": True,
+                            "message": f"Rule deleted from configuration but failed to remove from system: {msg}",
+                            "warning": True
+                        }
+                    )
+
+            return Message(
+                type="response",
+                data={
+                    "success": True,
+                    "message": f"Rule deleted from {fw_name}/{table_name}/{chain_name}"
+                }
+            )
+
+        else:
+            return Message(type="error", data={"message": f"Unknown action: {action}. Use add, insert, or delete"})
+
     def get_session(self, token: Optional[str]) -> Optional[Session]:
         """Récupère une session par son token"""
         if not token:

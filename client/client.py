@@ -279,6 +279,14 @@ class FirewallClient:
                 print(f"📍 Context: Firewall '{self.context[0]}' > Table '{self.context[1]}'")
             return True
 
+        # Commandes de gestion des règles (dans un contexte table uniquement)
+        if command.startswith(("add ", "append ", "insert ", "delete ")):
+            if len(self.context) < 2:
+                print("❌ You must be in a table context to manage rules")
+                print("💡 Use: fw select <firewall> then table select <table>")
+                return True
+            return self.handle_rule_command(command)
+
         # Commandes serveur
         if command.startswith("users "):
             return self.handle_users_command(command)
@@ -354,7 +362,118 @@ class FirewallClient:
                 print(f"✅ {response.data.get('message')}")
         
         return True
-    
+
+    def handle_rule_command(self, command: str) -> bool:
+        """
+        Gère les commandes de gestion des règles iptables
+
+        Parse les commandes comme:
+        - add INPUT tcp dport 80 ACCEPT
+        - add INPUT tcp sport 443 dport 22 ACCEPT
+        - add OUTPUT udp dport 53 ACCEPT
+        - add INPUT tcp source 192.168.1.0/24 dport 22 ACCEPT
+        - delete INPUT tcp dport 80 ACCEPT
+        - insert INPUT tcp dport 22 ACCEPT
+        """
+        parts = command.split()
+        action = parts[0]  # "add", "append", "insert", "delete"
+
+        if len(parts) < 3:
+            print("❌ Invalid rule syntax")
+            print("💡 Usage: add|insert|delete <chain> [protocol] [options] <target>")
+            print("   Example: add INPUT tcp dport 80 ACCEPT")
+            return True
+
+        chain = parts[1]  # INPUT, OUTPUT, FORWARD, etc.
+
+        # Parser les options de la règle
+        rule_def = {"chain": chain}
+        i = 2
+
+        # Parser les paramètres
+        while i < len(parts):
+            token = parts[i]
+
+            # Protocole (tcp, udp, icmp, etc.)
+            if token in ["tcp", "udp", "icmp", "all"] and "protocol" not in rule_def:
+                rule_def["protocol"] = token
+                i += 1
+
+            # Source IP
+            elif token in ["source", "src", "-s", "s"] and i + 1 < len(parts):
+                rule_def["source"] = parts[i + 1]
+                i += 2
+
+            # Destination IP
+            elif token in ["destination", "dest", "dst", "-d", "d"] and i + 1 < len(parts):
+                rule_def["destination"] = parts[i + 1]
+                i += 2
+
+            # Source port
+            elif token in ["sport", "source-port", "--sport"] and i + 1 < len(parts):
+                rule_def["sport"] = parts[i + 1]
+                i += 2
+
+            # Destination port
+            elif token in ["dport", "destination-port", "--dport"] and i + 1 < len(parts):
+                rule_def["dport"] = parts[i + 1]
+                i += 2
+
+            # State
+            elif token in ["state", "-m", "m"] and i + 1 < len(parts):
+                if parts[i + 1] == "state" and i + 2 < len(parts):
+                    rule_def["state"] = parts[i + 2]
+                    i += 3
+                else:
+                    rule_def["state"] = parts[i + 1]
+                    i += 2
+
+            # Interface
+            elif token in ["interface", "iface", "-i", "i"] and i + 1 < len(parts):
+                rule_def["interface"] = parts[i + 1]
+                i += 2
+
+            # Target (ACCEPT, DROP, REJECT, etc.)
+            elif token in ["ACCEPT", "DROP", "REJECT", "LOG", "RETURN"]:
+                rule_def["target"] = token
+                i += 1
+
+            else:
+                # Token inconnu ou target non standard
+                print(f"⚠️  Warning: Unknown token or parameter '{token}', treating as target")
+                rule_def["target"] = token
+                i += 1
+
+        # Vérifier que la règle a au minimum une chaîne et une cible
+        if "target" not in rule_def:
+            print("❌ No target specified (ACCEPT, DROP, REJECT, etc.)")
+            return True
+
+        # Envoyer la commande au serveur
+        firewall_name = self.context[0]
+        table_name = self.context[1]
+
+        response = self.send_message("rule", {
+            "firewall": firewall_name,
+            "table": table_name,
+            "action": action,
+            "rule": rule_def
+        })
+
+        if not response:
+            return True
+
+        if response.type == "error":
+            print(f"❌ {response.data.get('message')}")
+        elif response.data.get("success"):
+            message = response.data.get("message")
+            if response.data.get("warning"):
+                print(f"⚠️  {message}")
+            else:
+                print(f"✅ {message}")
+
+        return True
+
     def show_help(self):
         """Affiche l'aide"""
         print("\n📖 Available commands:")
@@ -382,6 +501,24 @@ class FirewallClient:
         print("  table select <table>          - Enter table context (filter/nat/mangle/raw)")
         print("  context                       - Show current context")
         print("  exit/back                     - Exit current context level")
+
+        print("\n🔧 Rule management (requires table context):")
+        print("  add <chain> [options] <target>      - Add a rule to a chain")
+        print("  insert <chain> [options] <target>   - Insert rule at the beginning")
+        print("  delete <chain> [options] <target>   - Delete a rule")
+        print("\n  Rule options:")
+        print("    tcp|udp|icmp               - Protocol")
+        print("    source <ip>                - Source IP/network")
+        print("    destination <ip>           - Destination IP/network")
+        print("    sport <port>               - Source port")
+        print("    dport <port>               - Destination port")
+        print("    state <states>             - Connection states")
+        print("    interface <iface>          - Network interface")
+        print("\n  Examples:")
+        print("    add INPUT tcp dport 80 ACCEPT")
+        print("    add INPUT tcp source 192.168.1.0/24 dport 22 ACCEPT")
+        print("    add OUTPUT udp dport 53 ACCEPT")
+        print("    delete INPUT tcp dport 80 ACCEPT")
 
         print("\n🚪 General:")
         print("  help                          - Show this help")
