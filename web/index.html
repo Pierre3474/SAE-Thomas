@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firewall Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-admin {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .badge-editor {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a52;
+        }
+
+        .btn-success {
+            background: #51cf66;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #40c057;
+        }
+
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .login-container h2 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .firewall-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .firewall-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .status-active {
+            background: #51cf66;
+        }
+
+        .status-inactive {
+            background: #ff6b6b;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 5px 15px;
+            font-size: 12px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close {
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #d3f9d8;
+            color: #2b8a3e;
+        }
+
+        .alert-error {
+            background: #ffe3e3;
+            color: #c92a2a;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .icon {
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+        <h2>🔥 Firewall Manager</h2>
+        <div id="loginError" class="alert alert-error hidden"></div>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="hostname">Server</label>
+                <input type="text" id="hostname" value="localhost:7890" required>
+            </div>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+        </form>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="mainApp" class="container hidden">
+        <div class="header">
+            <h1>🔥 Firewall Management</h1>
+            <div class="user-info">
+                <span id="userDisplay"></span>
+                <span id="roleDisplay" class="badge"></span>
+                <button class="btn btn-danger" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <div class="dashboard">
+            <!-- Firewalls Card -->
+            <div class="card">
+                <h3><span class="icon">🔥</span> Firewalls</h3>
+                <button class="btn btn-primary btn-small" onclick="openAddFirewallModal()">+ Add Firewall</button>
+                <div id="firewallsList" style="margin-top: 20px;"></div>
+            </div>
+
+            <!-- Users Card -->
+            <div class="card" id="usersCard">
+                <h3><span class="icon">👥</span> Users</h3>
+                <button class="btn btn-primary btn-small" onclick="openAddUserModal()">+ Add User</button>
+                <div id="usersList" style="margin-top: 20px;"></div>
+            </div>
+
+            <!-- Logs Card -->
+            <div class="card">
+                <h3><span class="icon">📋</span> Recent Activity</h3>
+                <div id="logsList">
+                    <p style="color: #999; font-size: 14px;">No recent activity</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Firewall Modal -->
+    <div id="addFirewallModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Firewall</h3>
+                <span class="close" onclick="closeAddFirewallModal()">&times;</span>
+            </div>
+            <form id="addFirewallForm">
+                <div class="form-group">
+                    <label>Firewall Name</label>
+                    <input type="text" id="firewallName" required>
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Create</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New User</h3>
+                <span class="close" onclick="closeAddUserModal()">&times;</span>
+            </div>
+            <form id="addUserForm">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="newUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="newPassword" required>
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="newRole" class="form-group input" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 5px;">
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                        <option value="reader">Reader</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Create User</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let sessionToken = null;
+        let currentUser = null;
+        let isAdmin = false;
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const hostname = document.getElementById('hostname').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                // Simuler l'authentification (à adapter pour WebSocket réel)
+                // Pour la démo, on accepte admin/admin
+                if (username === 'admin' && password === 'admin') {
+                    sessionToken = 'demo-token-' + Math.random();
+                    currentUser = username;
+                    isAdmin = true;
+                    
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('mainApp').classList.remove('hidden');
+                    document.getElementById('userDisplay').textContent = username;
+                    document.getElementById('roleDisplay').textContent = 'ADMIN';
+                    document.getElementById('roleDisplay').className = 'badge badge-admin';
+                    
+                    loadDashboard();
+                } else {
+                    showLoginError('Invalid credentials. Try admin/admin');
+                }
+            } catch (error) {
+                showLoginError('Connection failed: ' + error.message);
+            }
+        });
+
+        function showLoginError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        function logout() {
+            sessionToken = null;
+            currentUser = null;
+            document.getElementById('mainApp').classList.add('hidden');
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('loginError').classList.add('hidden');
+        }
+
+        function showAlert(message, type = 'success') {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            document.getElementById('alertContainer').appendChild(alert);
+            
+            setTimeout(() => alert.remove(), 3000);
+        }
+
+        async function loadDashboard() {
+            loadFirewalls();
+            if (isAdmin) {
+                loadUsers();
+            } else {
+                document.getElementById('usersCard').style.display = 'none';
+            }
+        }
+
+        function loadFirewalls() {
+            // Données de démonstration
+            const firewalls = [
+                { name: 'srv1', status: 'active' },
+                { name: 'srv2', status: 'inactive' },
+                { name: 'prod-web', status: 'active' }
+            ];
+
+            const html = firewalls.map(fw => `
+                <div class="firewall-item">
+                    <span class="firewall-name">${fw.name}</span>
+                    <div class="status">
+                        <span class="status-indicator status-${fw.status}"></span>
+                        <span>${fw.status}</span>
+                    </div>
+                    <div class="actions">
+                        ${fw.status === 'active' ? 
+                            `<button class="btn btn-danger btn-small" onclick="stopFirewall('${fw.name}')">Stop</button>` :
+                            `<button class="btn btn-success btn-small" onclick="startFirewall('${fw.name}')">Start</button>`
+                        }
+                        <button class="btn btn-danger btn-small" onclick="deleteFirewall('${fw.name}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('firewallsList').innerHTML = html;
+        }
+
+        function loadUsers() {
+            const users = [
+                { username: 'admin', role: 'admin', enabled: true },
+                { username: 'alice', role: 'editor', enabled: true },
+                { username: 'bob', role: 'editor', enabled: false }
+            ];
+
+            const html = users.map(user => `
+                <div class="firewall-item">
+                    <span class="firewall-name">${user.username}</span>
+                    <span class="badge badge-${user.role}">${user.role}</span>
+                    <div class="actions">
+                        ${user.enabled ? 
+                            `<button class="btn btn-danger btn-small" onclick="disableUser('${user.username}')">Disable</button>` :
+                            `<button class="btn btn-success btn-small" onclick="enableUser('${user.username}')">Enable</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('usersList').innerHTML = html;
+        }
+
+        function openAddFirewallModal() {
+            document.getElementById('addFirewallModal').style.display = 'block';
+        }
+
+        function closeAddFirewallModal() {
+            document.getElementById('addFirewallModal').style.display = 'none';
+            document.getElementById('firewallName').value = '';
+        }
+
+        function openAddUserModal() {
+            document.getElementById('addUserModal').style.display = 'block';
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('addUserModal').style.display = 'none';
+        }
+
+        document.getElementById('addFirewallForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('firewallName').value;
+            showAlert(`Firewall ${name} created successfully`);
+            closeAddFirewallModal();
+            loadFirewalls();
+        });
+
+        document.getElementById('addUserForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value;
+            showAlert(`User ${username} created successfully`);
+            closeAddUserModal();
+            loadUsers();
+        });
+
+        function startFirewall(name) {
+            showAlert(`Firewall ${name} started`);
+            setTimeout(loadFirewalls, 500);
+        }
+
+        function stopFirewall(name) {
+            showAlert(`Firewall ${name} stopped`);
+            setTimeout(loadFirewalls, 500);
+        }
+
+        function deleteFirewall(name) {
+            if (confirm(`Delete firewall ${name}?`)) {
+                showAlert(`Firewall ${name} deleted`);
+                setTimeout(loadFirewalls, 500);
+            }
+        }
+
+        function enableUser(username) {
+            showAlert(`User ${username} enabled`);
+            setTimeout(loadUsers, 500);
+        }
+
+        function disableUser(username) {
+            showAlert(`User ${username} disabled`);
+            setTimeout(loadUsers, 500);
+        }
+    </script>
+</body>
+</html>
