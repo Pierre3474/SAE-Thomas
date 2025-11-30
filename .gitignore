@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application data
+data/users.json
+data/firewalls.json
+data/logs/*.log
+
+# SSL certificates (keep template structure but ignore actual certs)
+server/certs/*.crt
+server/certs/*.key
+server/certs/*.pem
+
+# Backups
+*.bak
+*.backup
+*_backup_*/
